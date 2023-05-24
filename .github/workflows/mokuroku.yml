@@ -1,0 +1,42 @@
+name: 'mokuroku.csv 生成'
+
+on:
+  schedule:
+    # UTC 16:00 on Saturday => 日本時間の 01:00 日曜日
+    - cron: '0 16 * * 6'
+  workflow_dispatch: {}
+
+jobs:
+  create-mokuroku:
+    permissions:
+      id-token: write
+      contents: read
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # 差分抽出のために、全ての履歴が必要
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v3
+        with:
+          # gsi-ci-tools は NodeJS v16 を必要としています
+          node-version: '16'
+      - uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::204759435007:role/github-actions-tilestorage-access
+          aws-region: ap-northeast-1
+      - run: |
+          aws s3 cp s3://gsi-test-tilebucket-ap-northeast-1/gsi-ci-tools.tgz ./gsi-ci-tools.tgz
+          npm install -g ./gsi-ci-tools.tgz
+
+      - name: Create mokuroku.csv.gz
+        run: |
+          mkdir -p data
+          gsi-ci-tools index-to-mokuroku ./ ./data/mokuroku.csv.gz
+
+      - name: Upload mokuroku.csv.gz
+        run: |
+          aws s3 cp ./data/mokuroku.csv.gz s3://gsi-test-tilebucket-ap-northeast-1/tilesets/std_mokuroku.csv.gz
